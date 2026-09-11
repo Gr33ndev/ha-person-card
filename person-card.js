@@ -37,17 +37,41 @@ function normalizeEntities(list) {
   return (list || []).map((item) => (typeof item === 'string' ? { entity: item } : item));
 }
 
-function findWorstBadge(hass, entities) {
-  let worst = null;
+function readActiveBadges(hass, entities, maxLevel) {
+  const active = [];
   for (const item of entities) {
     const stateObj = hass.states[item.entity];
     if (!stateObj) continue;
     const level = readLevel(stateObj);
-    if (level !== null && level > 0 && (!worst || level > worst.level)) {
-      worst = { level, label: readLabel(stateObj), entity: item.entity };
+    if (level !== null && level > 0) {
+      active.push({
+        level,
+        label: item.name || readLabel(stateObj),
+        icon: item.icon || 'mdi:alert-circle',
+        color: colorForLevel(level, maxLevel),
+        entity: item.entity,
+      });
     }
   }
-  return worst;
+  active.sort((a, b) => b.level - a.level || a.label.localeCompare(b.label));
+  return active;
+}
+
+const TRACKER_TYPES = {
+  gps: { icon: 'mdi:crosshairs-gps', label: 'GPS' },
+  router: { icon: 'mdi:wifi', label: 'Wi-Fi' },
+  bluetooth_le: { icon: 'mdi:bluetooth', label: 'Bluetooth' },
+  bluetooth: { icon: 'mdi:bluetooth', label: 'Bluetooth' },
+};
+
+function relativeTime(iso) {
+  if (!iso) return 'unknown';
+  const diffSec = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+  if (diffSec < 5) return 'just now';
+  if (diffSec < 60) return `${Math.floor(diffSec)}s ago`;
+  if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
+  if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h ago`;
+  return `${Math.floor(diffSec / 86400)}d ago`;
 }
 
 class PersonCard extends HTMLElement {
@@ -104,6 +128,52 @@ class PersonCard extends HTMLElement {
           box-shadow: 0 0 0 2px var(--card-background-color, #fff);
         }
         .badge-dot ha-icon { --mdc-icon-size: 9px; color: #fff; }
+
+        .overlay {
+          position: fixed; inset: 0; z-index: 10000;
+          display: none; align-items: center; justify-content: center;
+          background: rgba(0, 0, 0, 0.4);
+          padding: 16px; box-sizing: border-box;
+          cursor: default;
+        }
+        .overlay.open { display: flex; }
+        .sheet {
+          width: 100%; max-width: 400px; max-height: 80vh; overflow-y: auto;
+          background: var(--ha-card-background, var(--card-background-color, #fff));
+          border-radius: 16px; padding: 16px 16px 20px;
+          box-sizing: border-box; color: var(--primary-text-color);
+          box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+        }
+        .sheet-header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+        .sheet-header .name { font-size: 1.1rem; font-weight: 600; }
+        .sheet-close {
+          margin-left: auto; width: 28px; height: 28px; border-radius: 50%;
+          display: flex; align-items: center; justify-content: center;
+          background: var(--secondary-background-color, rgba(127, 127, 127, 0.1));
+          cursor: pointer; flex-shrink: 0;
+        }
+        .section-label {
+          font-size: 0.75rem; font-weight: 600; text-transform: uppercase;
+          color: var(--secondary-text-color); margin: 12px 0 6px;
+        }
+        .section-label:first-of-type { margin-top: 0; }
+        .row {
+          display: flex; align-items: center; gap: 10px;
+          padding: 8px 4px; border-radius: 10px;
+        }
+        .row-icon {
+          width: 28px; height: 28px; border-radius: 50%;
+          display: flex; align-items: center; justify-content: center;
+          background: var(--secondary-background-color, rgba(127, 127, 127, 0.1));
+          flex-shrink: 0;
+        }
+        .row-icon ha-icon { --mdc-icon-size: 15px; }
+        .row-icon.active { background: var(--state-person-home-color, #1c8331); }
+        .row-icon.active ha-icon { color: #fff; }
+        .row-info { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+        .row-name { font-size: 0.88rem; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .row-meta { font-size: 0.75rem; color: var(--secondary-text-color); }
+        .empty-note { font-size: 0.85rem; color: var(--secondary-text-color); padding: 4px; }
       </style>
       <div class="chip">
         <div class="avatar"><img hidden><ha-icon icon="mdi:account"></ha-icon></div>
@@ -114,35 +184,112 @@ class PersonCard extends HTMLElement {
           <ha-icon class="src wifi" icon="mdi:wifi"></ha-icon>
         </span>
         <div class="badge-dot"><ha-icon icon="mdi:alert-circle"></ha-icon></div>
+      </div>
+      <div class="overlay">
+        <div class="sheet">
+          <div class="sheet-header">
+            <ha-icon icon="mdi:account"></ha-icon>
+            <span class="name"></span>
+            <div class="sheet-close"><ha-icon icon="mdi:close"></ha-icon></div>
+          </div>
+          <div class="body"></div>
+        </div>
       </div>`;
     this._el = {
       chip: this.shadowRoot.querySelector('.chip'),
       img: this.shadowRoot.querySelector('.avatar img'),
       icon: this.shadowRoot.querySelector('.avatar ha-icon'),
-      name: this.shadowRoot.querySelector('.name'),
+      name: this.shadowRoot.querySelector('.chip .name'),
       gps: this.shadowRoot.querySelector('.gps'),
       ble: this.shadowRoot.querySelector('.ble'),
       wifi: this.shadowRoot.querySelector('.wifi'),
       badgeDot: this.shadowRoot.querySelector('.badge-dot'),
       badgeIcon: this.shadowRoot.querySelector('.badge-dot ha-icon'),
+      overlay: this.shadowRoot.querySelector('.overlay'),
+      sheetName: this.shadowRoot.querySelector('.sheet-header .name'),
+      body: this.shadowRoot.querySelector('.body'),
     };
     this._el.chip.addEventListener('click', () => {
-      const cfg = this._config;
-      if (cfg.popup_hash) {
-        if (location.hash === cfg.popup_hash) {
-          window.dispatchEvent(new HashChangeEvent('hashchange'));
-        } else {
-          location.hash = cfg.popup_hash;
-        }
-      } else {
+      if (this._config.disable_popup) {
         this.dispatchEvent(
           new CustomEvent('hass-more-info', {
-            detail: { entityId: cfg.person_entity },
+            detail: { entityId: this._config.person_entity },
             bubbles: true,
             composed: true,
           })
         );
+      } else {
+        this._el.overlay.classList.add('open');
+        this._renderOverlay();
       }
+    });
+    this._el.overlay.addEventListener('click', (e) => {
+      if (e.target === this._el.overlay) this._el.overlay.classList.remove('open');
+    });
+    this._el.overlay
+      .querySelector('.sheet-close')
+      .addEventListener('click', () => this._el.overlay.classList.remove('open'));
+  }
+
+  _renderOverlay() {
+    const cfg = this._config;
+    const hass = this._hass;
+    const personState = hass.states[cfg.person_entity];
+    if (!personState) return;
+
+    this._el.sheetName.textContent = cfg.name || personState.attributes.friendly_name || cfg.person_entity;
+    this._el.body.innerHTML = '';
+
+    const badges = cfg.badge_entities.length ? readActiveBadges(hass, cfg.badge_entities, cfg.badge_max_level) : [];
+    if (badges.length) {
+      const label = document.createElement('div');
+      label.className = 'section-label';
+      label.textContent = 'Alerts';
+      this._el.body.appendChild(label);
+      badges.forEach((badge) => {
+        const row = document.createElement('div');
+        row.className = 'row';
+        row.innerHTML = `
+          <div class="row-icon" style="background:${badge.color}"><ha-icon icon="${badge.icon}" style="color:#fff"></ha-icon></div>
+          <div class="row-info"><div class="row-name">${badge.label}</div></div>`;
+        row.addEventListener('click', () =>
+          row.dispatchEvent(
+            new CustomEvent('hass-more-info', { detail: { entityId: badge.entity }, bubbles: true, composed: true })
+          )
+        );
+        this._el.body.appendChild(row);
+      });
+    }
+
+    const trackerLabel = document.createElement('div');
+    trackerLabel.className = 'section-label';
+    trackerLabel.textContent = 'Location sources';
+    this._el.body.appendChild(trackerLabel);
+
+    const trackers = personState.attributes.device_trackers || [];
+    if (!trackers.length) {
+      const empty = document.createElement('div');
+      empty.className = 'empty-note';
+      empty.textContent = 'No device trackers linked to this person.';
+      this._el.body.appendChild(empty);
+    }
+    trackers.forEach((entityId) => {
+      const ts = hass.states[entityId];
+      if (!ts) return;
+      const meta = TRACKER_TYPES[ts.attributes.source_type] || { icon: 'mdi:help-circle-outline', label: ts.attributes.source_type || 'Unknown' };
+      const active = ts.state === 'home';
+      const row = document.createElement('div');
+      row.className = 'row';
+      row.innerHTML = `
+        <div class="row-icon${active ? ' active' : ''}"><ha-icon icon="${meta.icon}"></ha-icon></div>
+        <div class="row-info">
+          <div class="row-name">${meta.label} &middot; ${ts.attributes.friendly_name || entityId}</div>
+          <div class="row-meta">${active ? 'Home' : ts.state === 'not_home' ? 'Away' : ts.state} &middot; ${relativeTime(ts.last_updated)}</div>
+        </div>`;
+      row.addEventListener('click', () =>
+        row.dispatchEvent(new CustomEvent('hass-more-info', { detail: { entityId }, bubbles: true, composed: true }))
+      );
+      this._el.body.appendChild(row);
     });
   }
 
@@ -189,17 +336,21 @@ class PersonCard extends HTMLElement {
     setSrc('wifi', wifiTs, 'Wi-Fi');
 
     if (cfg.badge_entities.length) {
-      const worst = findWorstBadge(hass, cfg.badge_entities);
+      const worst = readActiveBadges(hass, cfg.badge_entities, cfg.badge_max_level)[0];
       if (worst) {
         this._el.badgeDot.style.display = 'flex';
-        this._el.badgeDot.style.background = colorForLevel(worst.level, cfg.badge_max_level);
+        this._el.badgeDot.style.background = worst.color;
         this._el.badgeDot.title = worst.label;
-        if (cfg.badge_icon) this._el.badgeIcon.setAttribute('icon', cfg.badge_icon);
+        this._el.badgeIcon.setAttribute('icon', worst.icon);
       } else {
         this._el.badgeDot.style.display = 'none';
       }
     } else {
       this._el.badgeDot.style.display = 'none';
+    }
+
+    if (this._el.overlay.classList.contains('open')) {
+      this._renderOverlay();
     }
   }
 
@@ -215,5 +366,5 @@ window.customCards = window.customCards || [];
 window.customCards.push({
   type: 'person-card',
   name: 'Person Card',
-  description: 'Compact avatar chip showing a person\'s home/away state, which device-tracker source last reported them home (GPS/Bluetooth/Wi-Fi), and an optional severity badge from any set of sensors.',
+  description: 'Compact avatar chip showing a person\'s home/away state and device-tracker sources, with a built-in detail popup (location sources plus an optional severity badge from any set of sensors) — no separate popup card needed.',
 });

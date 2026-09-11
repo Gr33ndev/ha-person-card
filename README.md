@@ -1,10 +1,11 @@
 # Person Card
 
 A compact Home Assistant Lovelace chip for a `person.*` entity. Shows an
-avatar, whether the person is home, which device-tracker source last placed
-them there (GPS / Bluetooth / Wi-Fi), and an optional colour-coded badge dot
-driven by any set of severity sensors (pollen, air quality, anything with a
-numeric level).
+avatar, whether the person is home, and which device-tracker source last
+placed them there (GPS / Bluetooth / Wi-Fi). Tapping it opens a built-in
+detail popup — no separate popup card needed — listing every linked device
+tracker plus, optionally, a colour-coded list of active severity alerts from
+any set of sensors (pollen, air quality, anything with a numeric level).
 
 ## Installation
 
@@ -28,19 +29,16 @@ numeric level).
 | --- | --- | --- | --- |
 | `person_entity` | string | **required** | The `person.*` entity to show. |
 | `name` | string | entity's friendly name | Override the displayed name. |
-| `popup_hash` | string | — | A `#hash` (e.g. for [bubble-card](https://github.com/Clooos/Bubble-Card) pop-ups) to navigate to on tap, instead of opening the default more-info dialog. |
-| `badge_entities` | list | `[]` | Entity IDs, or `{entity, name}` objects, whose worst active severity level drives the badge dot. Detection order: a `numeric_state`/`level`/`pollen_level`/`index`/`value` attribute, or the primary state if it's a plain number. |
-| `badge_max_level` | number | `4` | The top of the severity scale used for the badge colour. |
-| `badge_icon` | string | `mdi:alert-circle` | Icon shown inside the badge dot. |
+| `badge_entities` | list | `[]` | Entity IDs, or `{entity, name, icon}` objects, whose active severity levels drive the badge dot and the "Alerts" section of the popup. Detection order: a `numeric_state`/`level`/`pollen_level`/`index`/`value` attribute, or the primary state if it's a plain number. |
+| `badge_max_level` | number | `4` | The top of the severity scale used for badge colours. |
+| `disable_popup` | boolean | `false` | Open Home Assistant's native more-info dialog on tap instead of the built-in popup. |
 
 ```yaml
 type: custom:person-card
 person_entity: person.jane
-popup_hash: "#jane-popup"
 badge_entities:
   - sensor.pollen_birch
   - sensor.pollen_ash
-badge_icon: mdi:flower-pollen
 ```
 
 The badge dot stays hidden whenever no configured entity is currently above
@@ -52,7 +50,8 @@ The three source icons (GPS, Bluetooth, Wi-Fi) light up based on the
 `device_trackers` attribute of the person entity: each tracker's
 `source_type` attribute (`gps`, `bluetooth_le`/`bluetooth`, `router`) decides
 which icon it feeds, and the icon is highlighted when that tracker's own
-state is `home`.
+state is `home`. The same list, with per-tracker state and last-updated
+time, appears in the popup.
 
 ## License
 
