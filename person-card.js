@@ -40,6 +40,15 @@ function normalizeEntities(list) {
 function readActiveBadges(hass, entities, maxLevel) {
   const active = [];
   for (const item of entities) {
+    // An entity gated by filter_entity/filter_state is only a candidate
+    // while that other entity currently holds the given state — e.g. a
+    // sensor that only matters while an input_select is set to this
+    // person's name. Re-evaluated on every render, so reassigning the
+    // selector elsewhere in HA updates the badge with no dashboard edit.
+    if (item.filter_entity) {
+      const filterState = hass.states[item.filter_entity];
+      if (!filterState || filterState.state !== item.filter_state) continue;
+    }
     const stateObj = hass.states[item.entity];
     if (!stateObj) continue;
     const level = readLevel(stateObj);
@@ -64,14 +73,53 @@ const TRACKER_TYPES = {
   bluetooth: { icon: 'mdi:bluetooth', label: 'Bluetooth' },
 };
 
-function relativeTime(iso) {
-  if (!iso) return 'unknown';
+// Tracker type labels (GPS/Bluetooth/Wi-Fi) are standardized technical terms
+// and stay untranslated; everything else the card writes to the DOM is
+// looked up here, keyed by the frontend's current language.
+const LOCALES = {
+  en: {
+    home: 'Home',
+    away: 'Away',
+    alerts: 'Alerts',
+    locationSources: 'Location sources',
+    noTrackers: 'No device trackers linked to this person.',
+    noSource: 'no source',
+    unknown: 'unknown',
+    justNow: 'just now',
+    secondsAgo: (n) => `${n}s ago`,
+    minutesAgo: (n) => `${n}m ago`,
+    hoursAgo: (n) => `${n}h ago`,
+    daysAgo: (n) => `${n}d ago`,
+  },
+  de: {
+    home: 'Zuhause',
+    away: 'Abwesend',
+    alerts: 'Warnungen',
+    locationSources: 'Standortquellen',
+    noTrackers: 'Keine Tracker mit dieser Person verknüpft.',
+    noSource: 'keine Quelle',
+    unknown: 'unbekannt',
+    justNow: 'gerade eben',
+    secondsAgo: (n) => `vor ${n}s`,
+    minutesAgo: (n) => `vor ${n}m`,
+    hoursAgo: (n) => `vor ${n}h`,
+    daysAgo: (n) => `vor ${n}d`,
+  },
+};
+
+function localeFor(hass) {
+  const lang = (hass && (hass.locale?.language || hass.language) || 'en').split('-')[0];
+  return LOCALES[lang] || LOCALES.en;
+}
+
+function relativeTime(iso, t) {
+  if (!iso) return t.unknown;
   const diffSec = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
-  if (diffSec < 5) return 'just now';
-  if (diffSec < 60) return `${Math.floor(diffSec)}s ago`;
-  if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
-  if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h ago`;
-  return `${Math.floor(diffSec / 86400)}d ago`;
+  if (diffSec < 5) return t.justNow;
+  if (diffSec < 60) return t.secondsAgo(Math.floor(diffSec));
+  if (diffSec < 3600) return t.minutesAgo(Math.floor(diffSec / 60));
+  if (diffSec < 86400) return t.hoursAgo(Math.floor(diffSec / 3600));
+  return t.daysAgo(Math.floor(diffSec / 86400));
 }
 
 class PersonCard extends HTMLElement {
@@ -234,6 +282,7 @@ class PersonCard extends HTMLElement {
   _renderOverlay() {
     const cfg = this._config;
     const hass = this._hass;
+    const t = localeFor(hass);
     const personState = hass.states[cfg.person_entity];
     if (!personState) return;
 
@@ -244,7 +293,7 @@ class PersonCard extends HTMLElement {
     if (badges.length) {
       const label = document.createElement('div');
       label.className = 'section-label';
-      label.textContent = 'Alerts';
+      label.textContent = t.alerts;
       this._el.body.appendChild(label);
       badges.forEach((badge) => {
         const row = document.createElement('div');
@@ -263,14 +312,14 @@ class PersonCard extends HTMLElement {
 
     const trackerLabel = document.createElement('div');
     trackerLabel.className = 'section-label';
-    trackerLabel.textContent = 'Location sources';
+    trackerLabel.textContent = t.locationSources;
     this._el.body.appendChild(trackerLabel);
 
     const trackers = personState.attributes.device_trackers || [];
     if (!trackers.length) {
       const empty = document.createElement('div');
       empty.className = 'empty-note';
-      empty.textContent = 'No device trackers linked to this person.';
+      empty.textContent = t.noTrackers;
       this._el.body.appendChild(empty);
     }
     trackers.forEach((entityId) => {
@@ -284,7 +333,7 @@ class PersonCard extends HTMLElement {
         <div class="row-icon${active ? ' active' : ''}"><ha-icon icon="${meta.icon}"></ha-icon></div>
         <div class="row-info">
           <div class="row-name">${meta.label} &middot; ${ts.attributes.friendly_name || entityId}</div>
-          <div class="row-meta">${active ? 'Home' : ts.state === 'not_home' ? 'Away' : ts.state} &middot; ${relativeTime(ts.last_updated)}</div>
+          <div class="row-meta">${active ? t.home : ts.state === 'not_home' ? t.away : ts.state} &middot; ${relativeTime(ts.last_updated, t)}</div>
         </div>`;
       row.addEventListener('click', () =>
         row.dispatchEvent(new CustomEvent('hass-more-info', { detail: { entityId }, bubbles: true, composed: true }))
@@ -301,6 +350,7 @@ class PersonCard extends HTMLElement {
     }
     const cfg = this._config;
     const hass = this._hass;
+    const t = localeFor(hass);
 
     const personState = hass.states[cfg.person_entity];
     const isHome = personState && personState.state === 'home';
@@ -320,7 +370,7 @@ class PersonCard extends HTMLElement {
 
     const trackers = (personState && personState.attributes.device_trackers) || [];
     const findTracker = (types) =>
-      trackers.map((t) => hass.states[t]).find((ts) => ts && types.includes(ts.attributes.source_type));
+      trackers.map((entId) => hass.states[entId]).find((ts) => ts && types.includes(ts.attributes.source_type));
 
     const gpsTs = findTracker(['gps']);
     const bleTs = findTracker(['bluetooth_le', 'bluetooth']);
@@ -329,7 +379,7 @@ class PersonCard extends HTMLElement {
     const setSrc = (key, ts, label) => {
       const active = ts && ts.state === 'home';
       this._el[key].classList.toggle('active', !!active);
-      this._el[key].title = ts ? `${label}: ${ts.state}` : `${label}: no source`;
+      this._el[key].title = ts ? `${label}: ${ts.state}` : `${label}: ${t.noSource}`;
     };
     setSrc('gps', gpsTs, 'GPS');
     setSrc('ble', bleTs, 'Bluetooth');

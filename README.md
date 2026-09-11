@@ -7,6 +7,14 @@ detail popup — no separate popup card needed — listing every linked device
 tracker plus, optionally, a colour-coded list of active severity alerts from
 any set of sensors (pollen, air quality, anything with a numeric level).
 
+<p align="center">
+  <img src="assets/person-card-preview.png" alt="person-card showing a home presence chip with GPS/Bluetooth/Wi-Fi source icons and an active alert badge" width="320">
+</p>
+
+The card's own text (tracker states, popup section labels, relative
+timestamps) follows the Home Assistant frontend's current language, with
+English and German built in; anything not covered falls back to English.
+
 ## Installation
 
 ### HACS (custom repository)
@@ -29,7 +37,7 @@ any set of sensors (pollen, air quality, anything with a numeric level).
 | --- | --- | --- | --- |
 | `person_entity` | string | **required** | The `person.*` entity to show. |
 | `name` | string | entity's friendly name | Override the displayed name. |
-| `badge_entities` | list | `[]` | Entity IDs, or `{entity, name, icon}` objects, whose active severity levels drive the badge dot and the "Alerts" section of the popup. Detection order: a `numeric_state`/`level`/`pollen_level`/`index`/`value` attribute, or the primary state if it's a plain number. |
+| `badge_entities` | list | `[]` | Entities whose active severity levels drive the badge dot and the "Alerts" section of the popup. See below. |
 | `badge_max_level` | number | `4` | The top of the severity scale used for badge colours. |
 | `disable_popup` | boolean | `false` | Open Home Assistant's native more-info dialog on tap instead of the built-in popup. |
 
@@ -43,6 +51,38 @@ badge_entities:
 
 The badge dot stays hidden whenever no configured entity is currently above
 level 0, or when `badge_entities` is omitted entirely.
+
+### `badge_entities` in detail
+
+Each entry is either a plain entity ID or an object:
+
+| Field | Description |
+| --- | --- |
+| `entity` | **required.** The sensor to read a severity level from. Detection order: a `numeric_state`/`level`/`pollen_level`/`index`/`value` attribute, or the primary state if it's a plain number. |
+| `name` | Override the label shown in the popup (default: the entity's own named-state attribute or friendly name). |
+| `icon` | Override the icon shown for this entry (default: `mdi:alert-circle`). |
+| `filter_entity` | Optional. Another entity whose current state gates this one in. |
+| `filter_state` | Required together with `filter_entity`: the state `filter_entity` must currently hold for this entry to count. |
+
+`filter_entity`/`filter_state` make an entry conditional on something else in
+your setup — for example a sensor that should only count while an
+`input_select` is set to a particular value. It's re-evaluated on every
+update, so changing that selector elsewhere in Home Assistant updates the
+badge with no dashboard edit needed:
+
+```yaml
+badge_entities:
+  - entity: sensor.pollen_birch
+    name: Birch
+    icon: mdi:tree-outline
+    filter_entity: input_select.pollen_alert_for
+    filter_state: Jane
+  - entity: sensor.pollen_grasses
+    name: Grasses
+    icon: mdi:grass
+    filter_entity: input_select.pollen_alert_for
+    filter_state: Jane
+```
 
 ### Device-tracker sources
 
