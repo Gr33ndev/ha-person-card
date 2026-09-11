@@ -37,6 +37,25 @@ function normalizeEntities(list) {
   return (list || []).map((item) => (typeof item === 'string' ? { entity: item } : item));
 }
 
+// Entities carrying a given Home Assistant Label (Settings > Entities > Label),
+// resolved fresh from the entity registry on every call. Requires a frontend
+// that exposes registry labels via hass.entities (2024.9+).
+function entitiesWithLabel(hass, labelId) {
+  if (!labelId || !hass.entities) return [];
+  return Object.keys(hass.entities).filter((id) => (hass.entities[id].labels || []).includes(labelId));
+}
+
+function resolveBadgeCandidates(hass, cfg) {
+  const candidates = [...cfg.badge_entities];
+  if (cfg.badge_label) {
+    const configured = new Set(candidates.map((item) => item.entity));
+    for (const entityId of entitiesWithLabel(hass, cfg.badge_label)) {
+      if (!configured.has(entityId)) candidates.push({ entity: entityId });
+    }
+  }
+  return candidates;
+}
+
 function readActiveBadges(hass, entities, maxLevel) {
   const active = [];
   for (const item of entities) {
@@ -289,7 +308,8 @@ class PersonCard extends HTMLElement {
     this._el.sheetName.textContent = cfg.name || personState.attributes.friendly_name || cfg.person_entity;
     this._el.body.innerHTML = '';
 
-    const badges = cfg.badge_entities.length ? readActiveBadges(hass, cfg.badge_entities, cfg.badge_max_level) : [];
+    const badgeCandidates = resolveBadgeCandidates(hass, cfg);
+    const badges = badgeCandidates.length ? readActiveBadges(hass, badgeCandidates, cfg.badge_max_level) : [];
     if (badges.length) {
       const label = document.createElement('div');
       label.className = 'section-label';
@@ -385,8 +405,9 @@ class PersonCard extends HTMLElement {
     setSrc('ble', bleTs, 'Bluetooth');
     setSrc('wifi', wifiTs, 'Wi-Fi');
 
-    if (cfg.badge_entities.length) {
-      const worst = readActiveBadges(hass, cfg.badge_entities, cfg.badge_max_level)[0];
+    const badgeCandidates = resolveBadgeCandidates(hass, cfg);
+    if (badgeCandidates.length) {
+      const worst = readActiveBadges(hass, badgeCandidates, cfg.badge_max_level)[0];
       if (worst) {
         this._el.badgeDot.style.display = 'flex';
         this._el.badgeDot.style.background = worst.color;

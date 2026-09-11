@@ -38,6 +38,7 @@ English and German built in; anything not covered falls back to English.
 | `person_entity` | string | **required** | The `person.*` entity to show. |
 | `name` | string | entity's friendly name | Override the displayed name. |
 | `badge_entities` | list | `[]` | Entities whose active severity levels drive the badge dot and the "Alerts" section of the popup. See below. |
+| `badge_label` | string | — | A Home Assistant Label ID. Every entity currently carrying this label is added to the badge candidates automatically — see below. |
 | `badge_max_level` | number | `4` | The top of the severity scale used for badge colours. |
 | `disable_popup` | boolean | `false` | Open Home Assistant's native more-info dialog on tap instead of the built-in popup. |
 
@@ -50,7 +51,32 @@ badge_entities:
 ```
 
 The badge dot stays hidden whenever no configured entity is currently above
-level 0, or when `badge_entities` is omitted entirely.
+level 0, or when `badge_entities`/`badge_label` are both omitted.
+
+### `badge_label`: fully dynamic badges
+
+Instead of (or in addition to) listing entities by hand, point the card at a
+[Label](https://www.home-assistant.io/docs/organizing/labels/) and it resolves
+the matching entities itself, live, on every update:
+
+```yaml
+type: custom:person-card
+person_entity: person.jane
+badge_label: jane
+```
+
+Tag any sensor with the `jane` label (Settings → Entities → pick the entity →
+Label) and it immediately shows up on Jane's card — no dashboard or card edit.
+Untag it and it's gone. This is the way to go when the set of relevant
+entities changes over time (which pollen sensor matters for which person,
+which alert applies to which room, …): manage membership entirely through
+Home Assistant's own Label UI, and automations can keep labels in sync with
+whatever your actual source of truth is (an `input_select`, a schedule, …) via
+the built-in `homeassistant.add_label_to_entity` / `remove_label_from_entity`
+actions.
+
+Requires a frontend that exposes entity registry labels via `hass.entities`
+(Home Assistant 2024.9+).
 
 ### `badge_entities` in detail
 
@@ -64,22 +90,15 @@ Each entry is either a plain entity ID or an object:
 | `filter_entity` | Optional. Another entity whose current state gates this one in. |
 | `filter_state` | Required together with `filter_entity`: the state `filter_entity` must currently hold for this entry to count. |
 
-`filter_entity`/`filter_state` make an entry conditional on something else in
-your setup — for example a sensor that should only count while an
-`input_select` is set to a particular value. It's re-evaluated on every
-update, so changing that selector elsewhere in Home Assistant updates the
-badge with no dashboard edit needed:
+`filter_entity`/`filter_state` make a *listed* entry conditional on something
+else in your setup, without needing a Label for it — for example a sensor
+that should only count while an `input_select` is set to a particular value:
 
 ```yaml
 badge_entities:
   - entity: sensor.pollen_birch
     name: Birch
     icon: mdi:tree-outline
-    filter_entity: input_select.pollen_alert_for
-    filter_state: Jane
-  - entity: sensor.pollen_grasses
-    name: Grasses
-    icon: mdi:grass
     filter_entity: input_select.pollen_alert_for
     filter_state: Jane
 ```
