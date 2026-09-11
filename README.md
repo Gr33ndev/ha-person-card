@@ -8,7 +8,9 @@ tracker plus, optionally, a colour-coded list of active severity alerts from
 any set of sensors (pollen, air quality, anything with a numeric level).
 
 <p align="center">
-  <img src="assets/person-card-preview.png" alt="person-card showing a home presence chip with GPS/Bluetooth/Wi-Fi source icons and an active alert badge" width="320">
+  <img src="assets/person-card-chip.png" alt="person-card chip showing a home presence state with GPS/Bluetooth/Wi-Fi source icons" width="280">
+  &nbsp;&nbsp;
+  <img src="assets/person-card-popup.png" alt="person-card built-in popup showing an active pollen alert and device-tracker location sources" width="280">
 </p>
 
 The card's own text (tracker states, popup section labels, relative
