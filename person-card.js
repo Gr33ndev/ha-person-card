@@ -194,7 +194,11 @@ class PersonCard extends HTMLElement {
           display: none; align-items: center; justify-content: center;
           box-shadow: 0 0 0 2px var(--card-background-color, #fff);
         }
-        .badge-dot ha-icon { --mdc-icon-size: 9px; color: #fff; }
+        .badge-dot ha-icon {
+          display: flex; align-items: center; justify-content: center;
+          width: 9px; height: 9px;
+          --mdc-icon-size: 9px; color: #fff;
+        }
 
         .overlay {
           position: fixed; inset: 0; z-index: 10000;
