@@ -17,13 +17,20 @@ function readLevel(stateObj) {
   return null;
 }
 
-function readLabel(stateObj) {
+function readName(stateObj) {
+  const attrs = stateObj.attributes || {};
+  return attrs.friendly_name || stateObj.entity_id;
+}
+
+// A short human-readable state description, when the entity has one, to
+// show as secondary text — the primary label is always the entity's name.
+function readSeverityText(stateObj) {
   const attrs = stateObj.attributes || {};
   const textKeys = ['named_state', 'level_name', 'state_text'];
   for (const key of textKeys) {
     if (attrs[key]) return attrs[key];
   }
-  return attrs.friendly_name || stateObj.entity_id;
+  return null;
 }
 
 function colorForLevel(level, maxLevel) {
@@ -74,8 +81,9 @@ function readActiveBadges(hass, entities, maxLevel) {
     if (level !== null && level > 0) {
       active.push({
         level,
-        label: item.name || readLabel(stateObj),
-        icon: item.icon || 'mdi:alert-circle',
+        label: item.name || readName(stateObj),
+        meta: readSeverityText(stateObj),
+        icon: item.icon || stateObj.attributes.icon || 'mdi:alert-circle',
         color: colorForLevel(level, maxLevel),
         entity: item.entity,
       });
@@ -238,7 +246,11 @@ class PersonCard extends HTMLElement {
           background: var(--secondary-background-color, rgba(127, 127, 127, 0.1));
           flex-shrink: 0;
         }
-        .row-icon ha-icon { --mdc-icon-size: 15px; }
+        .row-icon ha-icon {
+          display: flex; align-items: center; justify-content: center;
+          width: 15px; height: 15px;
+          --mdc-icon-size: 15px;
+        }
         .row-icon.active { background: var(--state-person-home-color, #1c8331); }
         .row-icon.active ha-icon { color: #fff; }
         .row-info { display: flex; flex-direction: column; min-width: 0; flex: 1; }
@@ -324,7 +336,10 @@ class PersonCard extends HTMLElement {
         row.className = 'row';
         row.innerHTML = `
           <div class="row-icon" style="background:${badge.color}"><ha-icon icon="${badge.icon}" style="color:#fff"></ha-icon></div>
-          <div class="row-info"><div class="row-name">${badge.label}</div></div>`;
+          <div class="row-info">
+            <div class="row-name">${badge.label}</div>
+            ${badge.meta ? `<div class="row-meta">${badge.meta}</div>` : ''}
+          </div>`;
         row.addEventListener('click', () =>
           row.dispatchEvent(
             new CustomEvent('hass-more-info', { detail: { entityId: badge.entity }, bubbles: true, composed: true })
@@ -415,7 +430,7 @@ class PersonCard extends HTMLElement {
       if (worst) {
         this._el.badgeDot.style.display = 'flex';
         this._el.badgeDot.style.background = worst.color;
-        this._el.badgeDot.title = worst.label;
+        this._el.badgeDot.title = worst.meta ? `${worst.label} · ${worst.meta}` : worst.label;
         this._el.badgeIcon.setAttribute('icon', worst.icon);
       } else {
         this._el.badgeDot.style.display = 'none';

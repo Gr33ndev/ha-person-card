@@ -85,10 +85,15 @@ Each entry is either a plain entity ID or an object:
 | Field | Description |
 | --- | --- |
 | `entity` | **required.** The sensor to read a severity level from. Detection order: a `numeric_state`/`level`/`pollen_level`/`index`/`value` attribute, or the primary state if it's a plain number. |
-| `name` | Override the label shown in the popup (default: the entity's own named-state attribute or friendly name). |
-| `icon` | Override the icon shown for this entry (default: `mdi:alert-circle`). |
+| `name` | Override the label shown in the popup (default: the entity's `friendly_name`). |
+| `icon` | Override the icon shown for this entry (default: the entity's own `icon` attribute, then `mdi:alert-circle`). |
 | `filter_entity` | Optional. Another entity whose current state gates this one in. |
 | `filter_state` | Required together with `filter_entity`: the state `filter_entity` must currently hold for this entry to count. |
+
+When the entity also has a `named_state`/`level_name`/`state_text` attribute
+(a human-readable severity word, as many level-based sensors provide), it's
+shown as small secondary text under the name — e.g. an allergen sensor row
+reads "Ragweed" with "moderate" underneath, rather than just the raw word.
 
 `filter_entity`/`filter_state` make a *listed* entry conditional on something
 else in your setup, without needing a Label for it — for example a sensor
