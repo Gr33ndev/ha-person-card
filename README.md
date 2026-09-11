@@ -77,6 +77,16 @@ whatever your actual source of truth is (an `input_select`, a schedule, …) via
 the built-in `homeassistant.add_label_to_entity` / `remove_label_from_entity`
 actions.
 
+A labelled entity still has to clear the same bar as a listed one: it only
+counts once its level (see [detection order](#badge_entities-in-detail)
+below) is above 0. There's no config slot to override its name or icon in
+this mode though — a label-matched entity always shows its own
+`friendly_name` and `icon` attribute, exactly as if it were listed under
+`badge_entities` with no `name`/`icon` set. If you need a custom name or
+icon for a specific entity, list it explicitly under `badge_entities`
+instead (or in addition — an entity listed there is never added a second
+time just because it also carries the label).
+
 Requires a frontend that exposes entity registry labels via `hass.entities`
 (Home Assistant 2024.9+).
 
